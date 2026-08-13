@@ -2,7 +2,7 @@ const COLORS={market:'#2f67a6',size:'#6f5499',value:'#c2413a',momentum:'#b76b13'
 const LABELS={market:'市场',size:'规模',value:'价值代理',momentum:'动量',quality:'防御代理',tech:'科技'};
 const METHOD_OPTIONS=[{id:'RBSA-6',label:'6 月收益风格',source:'Sharpe (1992)'},{id:'RBSA-12',label:'12 月收益风格',source:'Sharpe (1992)'},{id:'RBSA-18',label:'18 月收益风格',source:'Sharpe (1992)'},{id:'HOLDINGS',label:'季度持仓集中度',source:'Chan et al. (2002)'}];
 const IS_STATIC_HOST=location.hostname.endsWith('github.io')||location.protocol==='file:';
-let state=null,researchState=null,currentMode='analysis',activeFactors=new Set(['market','size','value','tech']),activeKgTypes=new Set(),selectedKgNode=null;
+let state=null,researchState=null,discoveryState=null,currentMode='analysis',activeFactors=new Set(['market','size','value','tech']),activeKgTypes=new Set(),selectedKgNode=null;
 
 const $=id=>document.getElementById(id);
 function setText(id,value){$(id).textContent=value}
@@ -19,9 +19,26 @@ async function loadAnalysis(){
 async function loadResearch(){
   document.body.classList.add('loading'); $('refresh').disabled=true;
   const fundId=$('fund-id').value.trim()||'159552';
-  try{const prompt=$('harness-prompt')?.value.trim()||'',methods=[...document.querySelectorAll('#method-options input:checked')].map(x=>x.value);if(!methods.length)throw new Error('请至少选择一种知识图谱研究方法');if(IS_STATIC_HOST&&fundId!=='159552')throw new Error('GitHub Pages 为 159552 真实数据快照；任意基金分析请运行本地 Python 服务');const res=await fetch(IS_STATIC_HOST?'data/research-159552.json':'/api/harness',IS_STATIC_HOST?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fund_id:fundId,prompt,methods}),cache:'no-store'});if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.error||`HTTP ${res.status}`)}researchState=await res.json();if(IS_STATIC_HOST)applyStaticSelection(researchState,methods,prompt);renderResearch();}
+  try{const prompt=$('harness-prompt')?.value.trim()||'';if(IS_STATIC_HOST&&fundId!=='159552')throw new Error('GitHub Pages 为 159552 真实数据快照；任意基金研究请运行本地 Python 服务');const res=await fetch(IS_STATIC_HOST?'data/discovery-159552.json':'/api/research/discover',IS_STATIC_HOST?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fund_id:fundId,prompt}),cache:'no-store'});if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.error||`HTTP ${res.status}`)}discoveryState=await res.json();researchState=null;renderDiscovery();}
   catch(err){setText('research-title','研究运行失败');setText('research-question',err.message);}
   finally{document.body.classList.remove('loading');$('refresh').disabled=false;}
+}
+
+async function executeDirection(directionId){
+  document.body.classList.add('loading');document.querySelectorAll('.direction-confirm').forEach(x=>x.disabled=true);
+  const fundId=$('fund-id').value.trim()||'159552',prompt=$('harness-prompt')?.value.trim()||'',direction=discoveryState.directions.find(x=>x.id===directionId),methods=direction.methods;
+  try{const url=IS_STATIC_HOST?`data/research-159552-${directionId.toLowerCase()}.json`:'/api/research/execute',options=IS_STATIC_HOST?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fund_id:fundId,prompt,direction_id:directionId,methods}),cache:'no-store'};const res=await fetch(url,options);if(!res.ok){const body=await res.json().catch(()=>({}));throw new Error(body.error||`HTTP ${res.status}`)}researchState=await res.json();renderResearch();}
+  catch(err){setText('research-title','实验运行失败');setText('research-question',err.message);}
+  finally{document.body.classList.remove('loading');document.querySelectorAll('.direction-confirm').forEach(x=>x.disabled=false)}
+}
+
+function renderDiscovery(){
+  const d=discoveryState;setText('research-title','文献知识图谱与研究缺口');setText('research-question','请选择并确认一个方向；确认前不会生成代码或运行实验');setText('hypothesis-count',String(d.directions.length));setText('harness-status','等待确认');
+  $('direction-gate').hidden=false;$('program-panel').hidden=true;$('execution-log').innerHTML='';$('experiment-list').innerHTML='';
+  $('direction-list').innerHTML=d.directions.map(x=>`<article class="direction-card ${x.feasibility}"><header><b>${x.id}</b><em>${x.feasibility==='ready'?'可直接运行':'部分数据受阻'}</em></header><h3>${x.title}</h3><p>${x.gap}</p><dl><div><dt>问题</dt><dd>${x.question}</dd></div><div><dt>预注册假设</dt><dd>${x.hypothesis}</dd></div><div><dt>证据</dt><dd>${x.literature_ids.join(' · ')}</dd></div><div><dt>数据 / 方法</dt><dd>${x.required_data.join('、')} / ${x.methods.join('、')}</dd></div></dl><button type="button" class="direction-confirm" data-direction="${x.id}">确认并开始研究</button></article>`).join('');
+  $('literature-list').innerHTML=d.literature.map(x=>`<article class="literature-item"><header><b>${x.citation_id}</b><span>${x.authors} · ${x.year}</span></header><h3>${x.title}</h3><dl><div><dt>测度</dt><dd>${x.extracted.measure}</dd></div><div><dt>机制</dt><dd>${x.extracted.mechanism}</dd></div><div><dt>局限</dt><dd>${x.extracted.limitation}</dd></div></dl></article>`).join('');
+  $('gap-list').innerHTML=d.directions.map(x=>`<div class="gap-item"><b>${x.id}</b><span>${x.gap}</span><em>${x.feasibility}</em></div>`).join('');$('hypothesis-list').innerHTML=d.directions.map(x=>`<li><b>${x.id}</b>：${x.hypothesis}<span class="hypothesis-state">待确认</span></li>`).join('');
+  renderKnowledgeGraph(d.knowledge_graph);renderHarness(d.harness);setText('kg-summary',`${d.knowledge_graph.nodes.length} 节点 · ${d.knowledge_graph.edges.length} 关系 · discovery`);setText('footer-run','文献分析完成 · 等待研究方向确认');
 }
 
 function applyStaticSelection(payload,methods,prompt){const r=payload.report,c=r.method_comparison;c.methods=c.methods.filter(m=>methods.includes(m.id));c.selected_ids=methods;const completed=c.methods.filter(m=>m.result.status==='completed'),signals=completed.map(m=>m.result.drift_detected),share=signals.length?signals.filter(Boolean).length/signals.length:0;c.review.completed=completed.length;c.review.not_testable=c.methods.length-completed.length;c.review.drift_vote_share=Number(share.toFixed(3));c.review.consensus=share>=.67?'drift':share<=.33?'no_drift':'mixed';const selected=new Set(methods),allMethods=new Set(METHOD_OPTIONS.map(m=>m.id));r.knowledge_graph.nodes=r.knowledge_graph.nodes.filter(n=>!allMethods.has(n.id)||selected.has(n.id));const ids=new Set(r.knowledge_graph.nodes.map(n=>n.id));r.knowledge_graph.edges=r.knowledge_graph.edges.filter(e=>ids.has(e.source)&&ids.has(e.target));r.harness.prompt=prompt;r.harness.stages[1].summary=`运行 ${c.methods.length} 种图谱方法与 ${r.experiments.length} 项实验`;r.harness.stages[1].evidence_ids=methods;r.harness.stages[2].summary=`方法共识 ${c.review.consensus}；不可检验 ${c.review.not_testable} 项；失败假设 ${r.failed_hypotheses.length} 项`}
@@ -42,6 +59,7 @@ function renderResearch(){
   $('gap-list').innerHTML=r.gaps.map(g=>`<div class="gap-item"><b>${g.id}</b><span>${g.gap}</span><em>${g.priority}优先级</em></div>`).join('');
   $('hypothesis-list').innerHTML=r.hypotheses.map(h=>`<li><b>${h.id}</b>：${h.statement}<span class="hypothesis-state ${h.status}">${h.status}</span></li>`).join('');
   $('experiment-list').innerHTML=r.experiments.map(e=>`<article class="experiment"><span>${e.id}</span><h3>${e.question}</h3><p>${e.method}</p><pre>${JSON.stringify(e.result,null,2)}</pre></article>`).join('');
+  $('direction-gate').hidden=true;const program=r.generated_program;$('program-panel').hidden=!program;if(program){setText('program-policy',program.execution_policy);setText('program-hash',`SHA-256 ${program.sha256}`);setText('program-source',program.source)}$('execution-log').innerHTML=(r.execution_log||[]).map(x=>`<div><b>${String(x.step).padStart(2,'0')} · ${x.agent}</b><span>${x.action}</span><em>${x.status}</em><code>${x.outputs.join(' · ')}</code></div>`).join('');
   $('binding-list').innerHTML=r.evidence_bindings.map(x=>`<div class="binding-row"><b>${x.claim_id}</b><span>${x.claim}<br><code>${x.evidence_ids.join(' · ')}</code></span><em class="audit-state ${x.status==='supported'?'ok':''}">${x.status}</em></div>`).join('');
   $('citation-list').innerHTML=r.citation_audit.map(x=>`<div class="citation-row"><b>${x.citation_id.replace('CIT-','')}</b><span><code>${x.doi}</code><br>${x.verification_status}</span><em class="audit-state ${x.doi_format_valid&&x.metadata_complete?'ok':''}">${x.doi_format_valid&&x.metadata_complete?'格式通过':'待修复'}</em></div>`).join('');
   const version=r.version;$('version-info').innerHTML=`<div>code: ${version.code.environment_version}</div><div>data: ${version.data.dataset_version}</div><div>schema: ${version.data.schema_sha256}</div>${r.data_manifest.map(x=>`<div class="manifest-row"><b>${x.dataset_id}</b><span>${x.source}</span><em>${x.status}</em></div>`).join('')}`;
@@ -63,16 +81,16 @@ function renderMethodComparison(comparison){
 }
 
 function renderHarness(harness){
-  if(!harness)return;setText('harness-status',harness.status==='completed'?'已完成':'运行中');
+  if(!harness)return;const labels={completed:'已完成',awaiting_confirmation:'等待确认',running:'运行中'};setText('harness-status',labels[harness.status]||harness.status);
   $('harness-stages').innerHTML=harness.stages.map((stage,index)=>`<article class="harness-stage ${stage.status}"><div class="harness-stage-index">0${index+1}</div><div class="harness-stage-main"><div><b>${stage.title}</b><span>${stage.status}</span></div><p>${stage.summary}</p><code>${stage.evidence_ids.slice(0,5).join(' · ')}</code></div></article>`).join('');
 }
 
-const KG_LABELS={literature:'文献',measure:'测度',method:'方法',mechanism:'机制',limitation:'局限',gap:'研究缺口',hypothesis:'假设',experiment:'实验',dataset:'数据',conclusion:'结论'};
-const KG_COLORS={literature:'#2f67a6',measure:'#527da5',method:'#206c78',mechanism:'#6f5499',limitation:'#b76b13',gap:'#8b6a23',hypothesis:'#16795a',experiment:'#267762',dataset:'#56635c',conclusion:'#c2413a'};
+const KG_LABELS={literature:'文献',measure:'测度',method:'方法',mechanism:'机制',limitation:'局限',gap:'研究缺口',direction:'研究方向',hypothesis:'假设',experiment:'实验',dataset:'数据',conclusion:'结论'};
+const KG_COLORS={literature:'#2f67a6',measure:'#527da5',method:'#206c78',mechanism:'#6f5499',limitation:'#b76b13',gap:'#8b6a23',direction:'#16795a',hypothesis:'#16795a',experiment:'#267762',dataset:'#56635c',conclusion:'#c2413a'};
 const SVG_NS='http://www.w3.org/2000/svg';
 
 function svgElement(name,attrs={}){const el=document.createElementNS(SVG_NS,name);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));return el}
-function kgLayer(node){if(node.id.startsWith('LIMIT-'))return 4;return {literature:0,measure:1,mechanism:1,limitation:1,gap:1,dataset:1,method:2,hypothesis:2,experiment:3,conclusion:4}[node.type]??2}
+function kgLayer(node){if(node.id.startsWith('LIMIT-'))return 4;return {literature:0,measure:1,mechanism:1,limitation:1,gap:1,dataset:1,direction:2,method:2,hypothesis:2,experiment:3,conclusion:4}[node.type]??2}
 function shortLabel(node){const value=node.type==='literature'?node.id.replace('CIT-',''):node.label;return value.length>23?`${value.slice(0,22)}…`:value}
 
 function renderKnowledgeGraph(graph){
@@ -150,5 +168,6 @@ function drawAll(){drawExposure();drawDistance()}
 $('mode-analysis').onclick=()=>switchMode('analysis');$('mode-research').onclick=()=>switchMode('research');
 $('fund-form').onsubmit=e=>{e.preventDefault();researchState=null;currentMode==='analysis'?loadAnalysis():loadResearch()};
 $('harness-form').onsubmit=e=>{e.preventDefault();researchState=null;loadResearch()};
+$('direction-list').onclick=e=>{const button=e.target.closest('.direction-confirm');if(button)executeDirection(button.dataset.direction)};
 $('refresh').onclick=()=>currentMode==='analysis'?loadAnalysis():loadResearch();window.addEventListener('resize',()=>requestAnimationFrame(drawAll));loadAnalysis();
 renderMethodOptions();

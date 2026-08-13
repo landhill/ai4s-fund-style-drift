@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .graph import HAS_LANGGRAPH, run_demo
 from .research import run_autonomous_research
+from .research_workflow import discover_research_directions, execute_confirmed_research
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -53,7 +54,7 @@ def analysis_payload(fund_id: str = "159552") -> dict:
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/harness":
+        if parsed.path not in {"/api/harness", "/api/research/discover", "/api/research/execute"}:
             self._send(404, "text/plain; charset=utf-8", b"Not found")
             return
         try:
@@ -66,8 +67,16 @@ class Handler(BaseHTTPRequestHandler):
             methods = payload.get("methods")
             if methods is not None and not isinstance(methods, list):
                 raise ValueError("methods must be a list")
-            result = run_autonomous_research(fund_id, methods)
-            result["report"]["harness"] = __import__("ai4s_style_drift.harness", fromlist=["build_harness_state"]).build_harness_state(result["report"], prompt)
+            if parsed.path == "/api/research/discover":
+                result = discover_research_directions(fund_id, prompt)
+            elif parsed.path == "/api/research/execute":
+                direction_id = str(payload.get("direction_id") or "").strip()
+                if not direction_id:
+                    raise ValueError("请先确认一个研究方向")
+                result = execute_confirmed_research(fund_id, direction_id, prompt, methods)
+            else:
+                result = run_autonomous_research(fund_id, methods)
+                result["report"]["harness"] = __import__("ai4s_style_drift.harness", fromlist=["build_harness_state"]).build_harness_state(result["report"], prompt)
             self._send(200, "application/json; charset=utf-8", json.dumps(result, ensure_ascii=False).encode("utf-8"))
         except Exception as exc:
             self._send(500, "application/json; charset=utf-8", json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8"))

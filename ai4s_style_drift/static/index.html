@@ -99,9 +99,12 @@
           <form id="harness-form">
             <label for="harness-prompt">告诉研究台你要检验的问题</label>
             <textarea id="harness-prompt" rows="3" placeholder="例如：判断 159552 是否发生持续性风格漂移，并解释失败假设与数据限制。"></textarea>
-            <fieldset class="method-picker"><legend>从知识图谱指定研究方法</legend><div id="method-options"></div></fieldset>
-            <div class="harness-submit"><span>任务会绑定当前基金代码、公开数据和版本指纹</span><button type="submit">启动 Harness</button></div>
+            <div class="harness-submit"><span>第一阶段只分析文献知识图谱，不会运行实验</span><button type="submit">分析文献与研究缺口</button></div>
           </form>
+        </div>
+        <div id="direction-gate" class="direction-gate" hidden>
+          <div class="section-heading"><div><p>HUMAN CONFIRMATION GATE</p><h2>确认研究方向</h2></div><span>确认后才允许生成程序并执行实验</span></div>
+          <div id="direction-list" class="direction-list"></div>
         </div>
         <div class="harness-process">
           <div class="section-heading"><div><p>HARNESS ORCHESTRATION</p><h2>研究过程可视化</h2></div><span>角色协作 · 证据回写 · 结果审核</span></div>
@@ -151,6 +154,11 @@
       </section>
       <section class="experiment-section">
         <div class="section-heading"><div><p>EXPERIMENT LOG</p><h2>科学实验记录</h2></div><span>确定性 Python 工具执行</span></div>
+        <div id="program-panel" class="program-panel" hidden>
+          <div><p>AGENT-GENERATED PROGRAM</p><h3>生成程序与执行边界</h3><span id="program-policy"></span><code id="program-hash"></code></div>
+          <pre id="program-source"></pre>
+        </div>
+        <div id="execution-log" class="execution-log"></div>
         <div id="experiment-list" class="experiment-list"></div>
       </section>
       <section class="audit-section">

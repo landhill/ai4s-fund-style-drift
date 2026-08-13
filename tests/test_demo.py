@@ -7,6 +7,7 @@ from ai4s_style_drift.public_data import load_public_fund
 from ai4s_style_drift.research import run_autonomous_research
 from ai4s_style_drift.data import make_demo_data
 from ai4s_style_drift.methods import compare_methods
+from ai4s_style_drift.research_workflow import discover_research_directions, execute_confirmed_research
 
 
 class StyleDriftDemoTest(unittest.TestCase):
@@ -88,6 +89,29 @@ class StyleDriftDemoTest(unittest.TestCase):
         returns, holdings, mandate = make_demo_data()
         with self.assertRaises(ValueError):
             compare_methods(returns, holdings, mandate["target"], ["UNKNOWN"])
+
+    def test_research_discovery_waits_for_confirmation(self):
+        payload = discover_research_directions("DEMO-TECH", "寻找研究缺口")
+        self.assertEqual(payload["phase"], "awaiting_confirmation")
+        self.assertEqual(payload["harness"]["status"], "awaiting_confirmation")
+        self.assertEqual(len(payload["directions"]), 3)
+        self.assertNotIn("report", payload)
+        self.assertTrue(any(stage["status"] == "waiting" for stage in payload["harness"]["stages"]))
+
+    def test_confirmed_direction_generates_and_runs_scoped_program(self):
+        payload = execute_confirmed_research("DEMO-TECH", "D2")
+        report = payload["report"]
+        self.assertEqual(payload["phase"], "completed")
+        self.assertEqual(report["confirmed_direction"]["id"], "D2")
+        self.assertEqual([item["id"] for item in report["experiments"]], ["E3"])
+        self.assertEqual([item["id"] for item in report["hypotheses"]], ["H3"])
+        self.assertEqual(len(report["generated_program"]["sha256"]), 64)
+        self.assertIn("no arbitrary exec", report["generated_program"]["execution_policy"])
+        self.assertEqual(len(report["execution_log"]), 5)
+
+    def test_unknown_direction_is_rejected(self):
+        with self.assertRaises(ValueError):
+            execute_confirmed_research("DEMO-TECH", "UNKNOWN")
 
 
 if __name__ == "__main__":

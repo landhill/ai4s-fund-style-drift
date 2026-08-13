@@ -52,7 +52,8 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
     gap_hypothesis = {"G1": ["H1", "H2"], "G2": ["H3"], "G3": ["H4"]}
     for gap_id, hypothesis_ids in gap_hypothesis.items():
         for hypothesis_id in hypothesis_ids:
-            add_edge(gap_id, hypothesis_id, "motivates")
+            if any(gap["id"] == gap_id for gap in report["gaps"]) and any(hypothesis["id"] == hypothesis_id for hypothesis in report["hypotheses"]):
+                add_edge(gap_id, hypothesis_id, "motivates")
 
     for experiment in report["experiments"]:
         add_node(
@@ -66,7 +67,8 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
     experiment_hypothesis = {"E1": ["H1", "H2"], "E3": ["H3"], "E4": ["H4"]}
     for experiment_id, hypothesis_ids in experiment_hypothesis.items():
         for hypothesis_id in hypothesis_ids:
-            add_edge(experiment_id, hypothesis_id, "tests")
+            if any(experiment["id"] == experiment_id for experiment in report["experiments"]) and any(hypothesis["id"] == hypothesis_id for hypothesis in report["hypotheses"]):
+                add_edge(experiment_id, hypothesis_id, "tests")
 
     for method in report.get("method_comparison", {}).get("methods", []):
         add_node(method["id"], "method", method["label"], source_id=method["source_id"], data_ids=method["data"], limitation=method["limitation"], result=method["result"])
@@ -94,7 +96,8 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
     }
     for data_id, experiment_ids in data_experiment.items():
         for experiment_id in experiment_ids:
-            add_edge(data_id, experiment_id, "depends_on")
+            if any(experiment["id"] == experiment_id for experiment in report["experiments"]):
+                add_edge(data_id, experiment_id, "depends_on")
 
     add_node(
         "CONCLUSION",
