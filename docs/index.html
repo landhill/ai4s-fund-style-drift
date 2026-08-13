@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基金风格漂移研究台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">AI4S · MULTI-AGENT RESEARCH</p>
+      <h1>基金风格漂移研究台</h1>
+    </div>
+    <div class="header-actions">
+      <span class="engine-status"><i></i><span id="engine">连接中</span></span>
+      <button id="refresh" type="button" title="重新运行研究图"><span aria-hidden="true">↻</span> 重新分析</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="notice" aria-label="数据说明">
+      <strong id="data-badge">验证数据</strong>
+      <span id="data-note">当前为可重复生成的合成 A 股科技基金样本，不构成真实市场结论或投资建议。</span>
+    </section>
+
+    <section class="command-bar" aria-label="研究模式与基金输入">
+      <div class="mode-switch" role="tablist">
+        <button id="mode-analysis" class="active" role="tab" aria-selected="true">指定基金分析</button>
+        <button id="mode-research" role="tab" aria-selected="false">自主研究推理</button>
+      </div>
+      <form id="fund-form">
+        <label for="fund-id">基金代码或名称</label>
+        <input id="fund-id" value="159552" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="例如 159552 或 588000">
+        <button type="submit"><span aria-hidden="true">▶</span> 运行</button>
+      </form>
+    </section>
+
+    <div id="analysis-view">
+
+    <section class="summary-band">
+      <div class="context">
+        <span id="dataset">载入数据中</span>
+        <span id="period">—</span>
+      </div>
+      <div class="metrics">
+        <article><span>漂移变化点</span><strong id="change-date">—</strong><small id="change-score">等待计算</small></article>
+        <article><span>漂移前距离</span><strong id="distance-pre">—</strong><small>相对契约目标</small></article>
+        <article><span>漂移后距离</span><strong id="distance-post">—</strong><small id="distance-change">等待计算</small></article>
+        <article><span>稳健性结论</span><strong id="robust-status">—</strong><small>前后半期复核</small></article>
+      </div>
+    </section>
+
+    <section class="workflow-section">
+      <div class="section-heading"><div><p>RESEARCH GRAPH</p><h2>多智能体研究流程</h2></div><span id="graph-label"></span></div>
+      <div id="workflow" class="workflow"></div>
+    </section>
+
+    <section class="analysis-grid">
+      <article class="chart-panel exposure-panel">
+        <div class="panel-heading">
+          <div><p>FACTOR EXPOSURE</p><h2>滚动风格暴露</h2></div>
+          <div id="factor-tabs" class="factor-tabs" role="group" aria-label="风格因子"></div>
+        </div>
+        <div class="chart-wrap"><canvas id="exposure-chart" aria-label="滚动风格暴露折线图"></canvas><div id="exposure-tooltip" class="tooltip"></div></div>
+      </article>
+
+      <article class="chart-panel distance-panel">
+        <div class="panel-heading"><div><p>DRIFT DISTANCE</p><h2>契约偏离距离</h2></div><span class="legend"><i></i>检测变化点</span></div>
+        <div class="chart-wrap"><canvas id="distance-chart" aria-label="风格漂移距离折线图"></canvas><div id="distance-tooltip" class="tooltip"></div></div>
+      </article>
+    </section>
+
+    <section class="evidence-section">
+      <div class="section-heading"><div><p>EVIDENCE REVIEW</p><h2>漂移归因与审查</h2></div></div>
+      <div class="evidence-layout">
+        <div class="finding">
+          <span class="finding-label">主要假设</span>
+          <h3 id="hypothesis">—</h3>
+          <p id="causal-status">—</p>
+          <div id="evidence-list" class="evidence-list"></div>
+        </div>
+        <div class="comparison">
+          <div class="comparison-head"><span>因子</span><span>漂移前</span><span>漂移后</span><span>变化</span></div>
+          <div id="comparison-rows"></div>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <div id="research-view" hidden>
+      <section class="research-hero">
+        <div><p>AUTONOMOUS RESEARCH</p><h2 id="research-title">自主研究实验报告</h2><span id="research-question">等待运行</span></div>
+        <div class="research-status"><strong id="hypothesis-count">—</strong><span>研究假设</span></div>
+      </section>
+      <section class="harness-console">
+        <div class="harness-dialog">
+          <div class="section-heading"><div><p>HARNESS PROMPT</p><h2>研究任务对话框</h2></div><span id="harness-status">等待输入</span></div>
+          <form id="harness-form">
+            <label for="harness-prompt">告诉研究台你要检验的问题</label>
+            <textarea id="harness-prompt" rows="3" placeholder="例如：判断 159552 是否发生持续性风格漂移，并解释失败假设与数据限制。"></textarea>
+            <fieldset class="method-picker"><legend>从知识图谱指定研究方法</legend><div id="method-options"></div></fieldset>
+            <div class="harness-submit"><span>任务会绑定当前基金代码、公开数据和版本指纹</span><button type="submit">启动 Harness</button></div>
+          </form>
+        </div>
+        <div class="harness-process">
+          <div class="section-heading"><div><p>HARNESS ORCHESTRATION</p><h2>研究过程可视化</h2></div><span>角色协作 · 证据回写 · 结果审核</span></div>
+          <div id="harness-stages" class="harness-stages"></div>
+        </div>
+      </section>
+      <section class="harness-output-band"><p>HARNESS OUTPUT</p><strong>以下研究报告由上述角色协作生成，保留正向、失败与未检验结果。</strong></section>
+      <section class="method-results-section">
+        <div class="section-heading"><div><p>METHOD BENCHMARK</p><h2>知识图谱方法效果比较</h2></div><span id="method-consensus">等待运行</span></div>
+        <div id="method-results" class="method-results"></div>
+        <p id="method-warning" class="method-warning"></p>
+      </section>
+      <section class="data-audit-section">
+        <div class="section-heading"><div><p>REAL DATA AUDIT</p><h2>真实数据来源核验</h2></div><span>观测、派生、假设与缺失分开披露</span></div>
+        <div class="data-audit-head"><span>数据项</span><span>性质</span><span>来源 / 标的</span><span>范围 / 观测</span><span>原始指纹</span></div>
+        <div id="data-audit-list"></div>
+      </section>
+      <section class="literature-section">
+        <div class="section-heading"><div><p>LITERATURE EXTRACTION</p><h2>测度、机制与局限</h2></div><span>所有抽取均绑定 citation ID</span></div>
+        <div id="literature-list" class="literature-list"></div>
+      </section>
+      <section class="research-body">
+        <div class="research-column">
+          <div class="section-heading"><div><p>RESEARCH GAPS</p><h2>当前研究欠缺</h2></div></div>
+          <div id="gap-list" class="gap-list"></div>
+        </div>
+        <div class="research-column">
+          <div class="section-heading"><div><p>HYPOTHESES</p><h2>可检验假设</h2></div></div>
+          <ol id="hypothesis-list" class="hypothesis-list"></ol>
+        </div>
+      </section>
+      <section class="knowledge-section">
+        <div class="section-heading">
+          <div><p>KNOWLEDGE GRAPH</p><h2>证据知识图谱</h2></div>
+          <span id="kg-summary">等待构建</span>
+        </div>
+        <div id="kg-filters" class="kg-filters" role="group" aria-label="图谱节点类型筛选"></div>
+        <div class="knowledge-layout">
+          <div class="kg-stage">
+            <svg id="knowledge-graph" role="img" aria-label="基金风格漂移研究证据知识图谱"></svg>
+          </div>
+          <aside id="kg-inspector" class="kg-inspector" aria-live="polite">
+            <p>NODE INSPECTOR</p><h3>选择一个节点</h3><span>点击节点查看证据、状态与版本信息。</span>
+          </aside>
+        </div>
+        <div id="kg-legend" class="kg-legend" aria-label="关系图例"></div>
+      </section>
+      <section class="experiment-section">
+        <div class="section-heading"><div><p>EXPERIMENT LOG</p><h2>科学实验记录</h2></div><span>确定性 Python 工具执行</span></div>
+        <div id="experiment-list" class="experiment-list"></div>
+      </section>
+      <section class="audit-section">
+        <div class="audit-panel">
+          <div class="section-heading"><div><p>EVIDENCE BINDING</p><h2>主张—证据绑定</h2></div></div>
+          <div id="binding-list"></div>
+        </div>
+        <div class="audit-panel">
+          <div class="section-heading"><div><p>CITATION AUDIT</p><h2>引用核验</h2></div></div>
+          <div id="citation-list"></div>
+        </div>
+      </section>
+      <section class="version-section">
+        <div><p>VERSION CHECK</p><h2>版本与数据清单</h2><div id="version-info" class="version-info"></div></div>
+        <div><p>REPRODUCTION COST</p><h2>复现成本</h2><div id="cost-info" class="cost-info"></div></div>
+      </section>
+      <section class="conclusion-section">
+        <div><p>SCIENTIFIC CONCLUSION</p><h2>结论与边界</h2><blockquote id="research-conclusion">—</blockquote></div>
+        <div><h3>局限性</h3><ul id="limitation-list"></ul></div>
+      </section>
+    </div>
+  </main>
+
+  <footer><span>LangGraph research demo</span><span id="footer-run">尚未运行</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
