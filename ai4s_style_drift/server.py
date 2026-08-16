@@ -11,6 +11,12 @@ from urllib.parse import parse_qs, urlparse
 from .graph import HAS_LANGGRAPH, run_demo
 from .research import run_autonomous_research
 from .research_workflow import discover_research_directions, execute_confirmed_research
+from .deepseek_harness import (
+    attach_deepseek_report,
+    configure_deepseek,
+    get_deepseek_config,
+    test_deepseek_connection,
+)
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -54,12 +60,23 @@ def analysis_payload(fund_id: str = "159552") -> dict:
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/harness", "/api/research/discover", "/api/research/execute"}:
+        if parsed.path not in {"/api/harness", "/api/research/discover", "/api/research/execute", "/api/deepseek/config"}:
             self._send(404, "text/plain; charset=utf-8", b"Not found")
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
+            if parsed.path == "/api/deepseek/config":
+                result = configure_deepseek(
+                    api_key=payload.get("api_key"),
+                    model=payload.get("model"),
+                    base_url=payload.get("base_url"),
+                    clear_api_key=bool(payload.get("clear_api_key")),
+                )
+                if payload.get("test_connection"):
+                    result = test_deepseek_connection()
+                self._send(200, "application/json; charset=utf-8", json.dumps(result, ensure_ascii=False).encode("utf-8"))
+                return
             fund_id = str(payload.get("fund_id") or "159552").strip()
             if not re.fullmatch(r"\d{6}", fund_id):
                 raise ValueError("请输入六位真实 A 股基金代码；自主研究不再使用合成数据回退")
@@ -76,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = execute_confirmed_research(fund_id, direction_id, prompt, methods)
             else:
                 result = run_autonomous_research(fund_id, methods)
+                attach_deepseek_report(result["report"], prompt)
                 result["report"]["harness"] = __import__("ai4s_style_drift.harness", fromlist=["build_harness_state"]).build_harness_state(result["report"], prompt)
             self._send(200, "application/json; charset=utf-8", json.dumps(result, ensure_ascii=False).encode("utf-8"))
         except Exception as exc:
@@ -86,6 +104,10 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         fund_id = query.get("fund_id", ["159552"])[0].strip()
+        if path == "/api/deepseek/config":
+            body = json.dumps(get_deepseek_config(), ensure_ascii=False).encode("utf-8")
+            self._send(200, "application/json; charset=utf-8", body)
+            return
         if path == "/api/analysis":
             try:
                 if not re.fullmatch(r"\d{6}", fund_id):

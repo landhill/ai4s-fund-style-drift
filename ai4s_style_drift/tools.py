@@ -53,3 +53,47 @@ def robustness_check(exposure: pd.DataFrame, target: pd.Series) -> dict:
         "positive_drift": bool(d.iloc[mid:].mean() > d.iloc[:mid].mean()),
         "alternative_window_note": "OLS window sensitivity should be rerun with 6/18 months on real data",
     }
+
+
+def industry_residual_analysis(fund_returns: pd.Series, industry_returns: pd.DataFrame, z_threshold: float = 2.0) -> dict:
+    """Fit frozen industry proxies and audit out-of-sample residual anomalies."""
+    aligned = pd.concat([fund_returns.rename("fund"), industry_returns], axis=1, sort=True).dropna()
+    if len(aligned) < 18 or aligned.shape[1] < 3:
+        return {"status": "not_testable", "reason": "at least 18 aligned months and two industry proxies are required", "n_observations": len(aligned)}
+    factor_names = list(aligned.columns[1:])
+    split = max(12, int(len(aligned) * 0.65))
+    if len(aligned) - split < 4:
+        split = len(aligned) - 4
+    train, test = aligned.iloc[:split], aligned.iloc[split:]
+    x_train = np.c_[np.ones(len(train)), train[factor_names].to_numpy()]
+    beta = np.linalg.lstsq(x_train, train["fund"].to_numpy(), rcond=None)[0]
+    train_residual = train["fund"].to_numpy() - x_train @ beta
+    predicted = np.c_[np.ones(len(test)), test[factor_names].to_numpy()] @ beta
+    residual = pd.Series(test["fund"].to_numpy() - predicted, index=test.index)
+    scale = float(np.std(train_residual, ddof=1)) or 1.0
+    z_score = residual / scale
+    anomalies = [
+        {"date": str(date.date()), "residual": round(float(residual.loc[date]), 6), "z_score": round(float(value), 3)}
+        for date, value in z_score.items() if abs(value) >= z_threshold
+    ]
+    window = min(12, max(6, len(aligned) // 3))
+    rolling_betas = []
+    for end in range(window, len(aligned) + 1):
+        sample = aligned.iloc[end - window:end]
+        coef = np.linalg.lstsq(np.c_[np.ones(len(sample)), sample[factor_names].to_numpy()], sample["fund"].to_numpy(), rcond=None)[0][1:]
+        rolling_betas.append(coef)
+    beta_shift = np.asarray(rolling_betas[-1]) - np.asarray(rolling_betas[0])
+    shifts = sorted(
+        ({"industry": name, "change": round(float(change), 4)} for name, change in zip(factor_names, beta_shift)),
+        key=lambda item: abs(item["change"]), reverse=True,
+    )
+    return {
+        "status": "completed",
+        "protocol": {"train_months": len(train), "test_months": len(test), "frozen_parameters": True, "z_threshold": z_threshold},
+        "metrics": {"rmse": round(float(np.sqrt(np.mean(residual.to_numpy() ** 2))), 6), "mae": round(float(np.mean(np.abs(residual.to_numpy()))), 6)},
+        "anomaly_months": anomalies,
+        "anomaly_share": round(len(anomalies) / len(test), 3),
+        "max_abs_z": round(float(z_score.abs().max()), 3),
+        "rolling_exposure_changes": shifts,
+        "proxy_warning": "Industry ETFs are observable investable proxies, not an exhaustive or orthogonal industry factor model.",
+    }

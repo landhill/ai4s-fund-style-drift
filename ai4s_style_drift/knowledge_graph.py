@@ -49,7 +49,7 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
             registered_before_test=hypothesis["registered_before_test"],
         )
 
-    gap_hypothesis = {"G1": ["H1", "H2"], "G2": ["H3"], "G3": ["H4"]}
+    gap_hypothesis = {"G1": ["H1", "H2"], "G2": ["H3"], "G3": ["H4", "H5"], "G4": ["H6"]}
     for gap_id, hypothesis_ids in gap_hypothesis.items():
         for hypothesis_id in hypothesis_ids:
             if any(gap["id"] == gap_id for gap in report["gaps"]) and any(hypothesis["id"] == hypothesis_id for hypothesis in report["hypotheses"]):
@@ -64,7 +64,7 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
             result=experiment["result"],
             evidence_id=experiment["id"],
         )
-    experiment_hypothesis = {"E1": ["H1", "H2"], "E3": ["H3"], "E4": ["H4"]}
+    experiment_hypothesis = {"E1": ["H1", "H2"], "E3": ["H3"], "E4": ["H4"], "E5": ["H5"], "E6": ["H6"]}
     for experiment_id, hypothesis_ids in experiment_hypothesis.items():
         for hypothesis_id in hypothesis_ids:
             if any(experiment["id"] == experiment_id for experiment in report["experiments"]) and any(hypothesis["id"] == hypothesis_id for hypothesis in report["hypotheses"]):
@@ -93,6 +93,10 @@ def build_knowledge_graph(report: dict[str, Any], fund_id: str) -> dict[str, Any
         "DATA-HOLDINGS": ["E4"],
         "DATA-FLOW": ["E4"],
         "DATA-FACTORS": ["E1", "E3"],
+        "DATA-MANAGER": ["E4"],
+        "DATA-REPORTS": ["E5"],
+        "DATA-COMMUNICATIONS": ["E5"],
+        "DATA-INDUSTRY": ["E6"],
     }
     for data_id, experiment_ids in data_experiment.items():
         for experiment_id in experiment_ids:

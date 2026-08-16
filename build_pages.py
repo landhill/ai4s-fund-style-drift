@@ -23,7 +23,7 @@ def main() -> None:
     (data_dir / "analysis-159552.json").write_text(json.dumps(analysis_payload("159552"), ensure_ascii=False), encoding="utf-8")
     (data_dir / "research-159552.json").write_text(json.dumps(run_autonomous_research("159552"), ensure_ascii=False), encoding="utf-8")
     (data_dir / "discovery-159552.json").write_text(json.dumps(discover_research_directions("159552"), ensure_ascii=False), encoding="utf-8")
-    for direction_id in ("D1", "D2", "D3"):
+    for direction_id in ("D1", "D2", "D3", "D4"):
         payload = execute_confirmed_research("159552", direction_id)
         (data_dir / f"research-159552-{direction_id.lower()}.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     (OUTPUT / ".nojekyll").touch()

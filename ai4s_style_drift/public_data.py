@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from hashlib import sha256
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 import json
 import re
@@ -18,8 +18,13 @@ CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache" / "public_fund_data"
 NAV_URL = "https://api.fund.eastmoney.com/f10/lsjz"
 ARCHIVE_URL = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx"
 KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+NOTICE_URL = "https://api.fund.eastmoney.com/f10/JJGG"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://fundf10.eastmoney.com/"}
 PROXIES = {"market": "510300", "size": "510500", "growth": "159915", "value_lowvol": "512890", "tech": "512760"}
+INDUSTRY_PROXIES = {
+    "semiconductor": "512480", "new_energy": "515030", "defense": "512660",
+    "healthcare": "512170", "bank": "512800", "real_estate": "512200",
+}
 
 
 class PublicDataError(RuntimeError):
@@ -83,7 +88,104 @@ def fetch_exchange_monthly(code: str, refresh: bool = False) -> tuple[pd.Series,
         raise PublicDataError(f"No public exchange price records for {code}")
     frame = pd.DataFrame([row.split(",") for row in klines], columns=["date", "open", "close", "high", "low", "volume", "amount", "amplitude", "pct", "change", "turnover"])
     frame["date"] = pd.to_datetime(frame["date"]); frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
-    return frame.dropna(subset=["close"]).set_index("date")["close"].pct_change().rename(code), {**meta, "instrument_name": data.get("name"), "source_type": "exchange_adjusted_monthly_price"}
+    series = frame.dropna(subset=["close"]).set_index("date")["close"].pct_change().rename(code)
+    series.index = series.index.to_period("M").to_timestamp("M")
+    return series, {**meta, "instrument_name": data.get("name"), "source_type": "exchange_adjusted_monthly_price"}
+
+
+def parse_manager_history(raw: bytes) -> pd.DataFrame:
+    """Parse the public manager tenure table into a stable event schema."""
+    for table in pd.read_html(StringIO(raw.decode("utf-8", errors="replace"))):
+        columns = [str(column) for column in table.columns]
+        if {"起始期", "截止期", "基金经理"} <= set(columns):
+            frame = table.rename(columns={"起始期": "start_date", "截止期": "end_date", "基金经理": "manager"})
+            frame["start_date"] = pd.to_datetime(frame["start_date"], errors="coerce")
+            frame["end_date"] = pd.to_datetime(frame["end_date"].replace("至今", pd.NaT), errors="coerce")
+            frame["manager"] = frame["manager"].astype(str).str.strip()
+            return frame[["start_date", "end_date", "manager"]].dropna(subset=["start_date", "manager"])
+    raise PublicDataError("Manager tenure table not found")
+
+
+def fetch_manager_history(code: str, refresh: bool = False) -> tuple[pd.DataFrame, dict]:
+    url = f"https://fundf10.eastmoney.com/jjjl_{code}.html"
+    raw, meta = _cache_get(url, {}, f"manager_{code}", refresh)
+    return parse_manager_history(raw), {**meta, "source_type": "manager_tenure_html"}
+
+
+def fetch_report_metadata(code: str, refresh: bool = False) -> tuple[list[dict], dict]:
+    params = {"fundcode": code, "pageIndex": 1, "pageSize": 20, "type": 3}
+    raw, meta = _cache_get(NOTICE_URL, params, f"reports_{code}", refresh)
+    payload = json.loads(raw.decode("utf-8-sig"))
+    if payload.get("ErrCode") != 0:
+        raise PublicDataError(f"Notice endpoint error for {code}: {payload.get('ErrMsg')}")
+    records = []
+    for item in payload.get("Data") or []:
+        notice_id = str(item.get("ID") or "")
+        if not notice_id:
+            continue
+        records.append({
+            "id": notice_id,
+            "title": item.get("TITLE"),
+            "published_date": item.get("PUBLISHDATEDesc"),
+            "source_url": f"https://fund.eastmoney.com/gonggao/{code},{notice_id}.html",
+            "document_url": f"https://pdf.dfcfw.com/pdf/H2_{notice_id}_1.pdf",
+            "text_status": "metadata_only",
+            "source_sha256": meta["sha256"],
+        })
+    return records, {**meta, "source_type": "periodic_report_metadata", "total_count": payload.get("TotalCount", len(records))}
+
+
+def extract_report_narratives(reports: list[dict], refresh: bool = False, limit: int = 4) -> tuple[list[dict], dict]:
+    """Extract the manager-operation section from source PDFs; failures remain explicit."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return reports, {"status": "not_testable", "reason": "pypdf is not installed", "documents": 0, "sha256": None}
+    document_hashes = []
+    extracted = 0
+    for report in reports[:limit]:
+        try:
+            raw, meta = _cache_get(report["document_url"], {}, f"report_{report['id']}", refresh)
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(raw)).pages)
+            text = re.sub(r"[ \t\r]+", " ", text)
+            match = re.search(r"报告期内基金投资策略和运作分析\s*(.*?)(?:报告期内基金的业绩表现|基金投资组合报告|§\s*5)", text, re.S)
+            report["document_sha256"] = meta["sha256"]
+            document_hashes.append(meta["sha256"])
+            if match:
+                narrative = re.sub(r"\s+", " ", match.group(1)).strip()[:3000]
+                report["narrative"] = narrative
+                report["text_status"] = "extracted"
+                report["source_sha256"] = meta["sha256"]
+                extracted += 1
+            else:
+                report["text_status"] = "section_not_found"
+        except (PublicDataError, OSError, ValueError) as exc:
+            report["text_status"] = "extract_failed"
+            report["text_error"] = type(exc).__name__
+    return reports, {
+        "status": "completed" if extracted else "not_testable",
+        "documents": min(limit, len(reports)),
+        "extracted": extracted,
+        "sha256": sha256("".join(document_hashes).encode()).hexdigest() if document_hashes else None,
+    }
+
+
+def load_industry_benchmarks(refresh: bool = False) -> tuple[pd.DataFrame, dict]:
+    def load_one(item: tuple[str, str]) -> tuple[pd.Series, dict]:
+        _, code = item
+        nav, meta = fetch_nav(code, refresh)
+        return _monthly_return(nav).rename(code), {**meta, "source_type": "industry_etf_nav"}
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        loaded = dict(zip(INDUSTRY_PROXIES, pool.map(load_one, INDUSTRY_PROXIES.items())))
+    frame = pd.concat({name: value[0] for name, value in loaded.items()}, axis=1).sort_index()
+    meta = {
+        "source_type": "industry_etf_nav_monthly_returns",
+        "instruments": INDUSTRY_PROXIES,
+        "sha256": sha256("".join(value[1]["sha256"] for value in loaded.values()).encode()).hexdigest(),
+        "sources": {name: value[1] for name, value in loaded.items()},
+    }
+    return frame, meta
 
 
 def _embedded_html(raw: bytes) -> str:
@@ -145,6 +247,21 @@ def load_public_fund(code: str, refresh: bool = False) -> tuple[pd.DataFrame, pd
     }).dropna()
     holdings, holdings_meta = fetch_holdings(code, refresh=refresh)
     scale, scale_meta = fetch_scale(code, refresh=refresh)
+    try:
+        managers, manager_meta = fetch_manager_history(code, refresh=refresh)
+    except PublicDataError as exc:
+        managers, manager_meta = pd.DataFrame(columns=["start_date", "end_date", "manager"]), {"status": "missing", "reason": str(exc), "sha256": None}
+    try:
+        reports, report_meta = fetch_report_metadata(code, refresh=refresh)
+        reports, narrative_meta = extract_report_narratives(reports, refresh=refresh)
+        report_meta = {**report_meta, "narrative_extraction": narrative_meta}
+    except PublicDataError as exc:
+        reports, narrative_meta = [], {"status": "missing", "reason": str(exc), "sha256": None}
+        report_meta = {**narrative_meta, "narrative_extraction": narrative_meta}
+    try:
+        industry_returns, industry_meta = load_industry_benchmarks(refresh=refresh)
+    except PublicDataError as exc:
+        industry_returns, industry_meta = pd.DataFrame(), {"status": "missing", "reason": str(exc), "sha256": None, "instruments": INDUSTRY_PROXIES}
     raw_meta = {name: result[1] for name, result in results.items()}
     data_audit = [
         {"id": "FUND_NAV", "kind": "observed", "source": "东方财富基金历史净值", "instrument": code, "observations": raw_meta["fund"]["raw_observations"], "start": raw_meta["fund"]["actual_start"], "end": raw_meta["fund"]["actual_end"], "analysis_frequency": "monthly", "analysis_observations": int(aligned["fund"].notna().sum()), "sha256": raw_meta["fund"]["sha256"]},
@@ -153,6 +270,10 @@ def load_public_fund(code: str, refresh: bool = False) -> tuple[pd.DataFrame, pd
         {"id": "FACTOR_PROXIES", "kind": "derived_from_observed", "source": "真实 ETF 净值构造的市场/规模/价值/科技代理因子", "instrument": ",".join(PROXIES.values()), "observations": len(returns), "start": str(returns.index.min().to_period("M")), "end": str(returns.index.max().to_period("M")), "sha256": sha256("".join(raw_meta[name]["sha256"] for name in PROXIES).encode()).hexdigest()},
         {"id": "RISK_FREE", "kind": "assumption", "source": "月度无风险利率暂设为 0", "instrument": "N/A", "observations": len(returns), "sha256": None},
         {"id": "FLOW", "kind": "missing", "source": "尚未连接可复现的真实资金流序列", "instrument": code, "observations": 0, "sha256": None},
+        {"id": "MANAGER", "kind": "observed" if len(managers) else "missing", "source": "东方财富基金经理任职履历", "instrument": code, "observations": len(managers), "sha256": manager_meta.get("sha256")},
+        {"id": "REPORTS", "kind": "observed" if len(reports) else "missing", "source": "东方财富定期报告公告与 PDF 原文", "instrument": code, "observations": len(reports), "sha256": narrative_meta.get("sha256") or report_meta.get("sha256")},
+        {"id": "COMMUNICATIONS", "kind": "missing", "source": "外部宣讲须提供发布日期、原文 URL 与原文指纹；当前未接入", "instrument": code, "observations": 0, "sha256": None},
+        {"id": "INDUSTRY", "kind": "derived_from_observed" if not industry_returns.empty else "missing", "source": "公开行业 ETF 净值月收益代理", "instrument": ",".join(INDUSTRY_PROXIES.values()), "observations": int(industry_returns.notna().any(axis=1).sum()) if not industry_returns.empty else 0, "sha256": industry_meta.get("sha256")},
     ]
     mandate = {
         "fund_id": code, "declared_style": "public-data fund; contract parser pending",
@@ -161,8 +282,12 @@ def load_public_fund(code: str, refresh: bool = False) -> tuple[pd.DataFrame, pd
         "evidence": "Eastmoney public NAV/archives; unofficial endpoint",
         "data_source": "eastmoney_public", "factor_model": "public ETF proxy factors v1",
         "fund_structure": ("exchange_traded_fund_candidate" if code.startswith(("1", "5")) else "open_end_fund"),
-        "source_meta": {"nav": raw_meta, "holdings": holdings_meta, "scale": scale_meta},
+        "source_meta": {"nav": raw_meta, "holdings": holdings_meta, "scale": scale_meta, "manager": manager_meta, "reports": report_meta, "industry": industry_meta},
         "scale_records": scale.to_dict("records"),
+        "manager_history": managers.to_dict("records"),
+        "periodic_reports": reports,
+        "manager_communications": [],
+        "industry_returns": industry_returns,
         "data_audit": data_audit,
     }
     return returns, holdings, mandate

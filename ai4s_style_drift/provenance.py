@@ -55,6 +55,10 @@ PUBLIC_DATA_MANIFEST = [
     {"dataset_id": "HOLDINGS", "required": True, "source": "Eastmoney fund archive holdings HTML", "frequency": "quarterly", "status": "adapter_not_connected", "version_rule": "report year + raw response SHA-256"},
     {"dataset_id": "FLOW", "required": True, "source": "Eastmoney scale table; return-adjusted flow derivation pending", "frequency": "quarterly or lower", "status": "data_gap", "version_rule": "formula version + input fingerprints"},
     {"dataset_id": "FACTORS", "required": True, "source": "ETF proxy factors from public NAV: 510300/510500/159915/512890/512760", "frequency": "monthly", "status": "adapter_not_connected", "version_rule": "proxy list + formula version + raw fingerprints"},
+    {"dataset_id": "MANAGER", "required": False, "source": "Eastmoney manager tenure HTML", "frequency": "event", "status": "adapter_not_connected", "version_rule": "access timestamp + raw response SHA-256"},
+    {"dataset_id": "REPORTS", "required": False, "source": "Eastmoney periodic report metadata and original-document links", "frequency": "quarterly", "status": "metadata_adapter", "version_rule": "announcement ID + response SHA-256"},
+    {"dataset_id": "COMMUNICATIONS", "required": False, "source": "Manager speeches/interviews with original URL and publication date", "frequency": "event", "status": "data_gap", "version_rule": "original text SHA-256; search snippets forbidden"},
+    {"dataset_id": "INDUSTRY", "required": False, "source": "Public industry ETF adjusted monthly prices: 512480/515030/512660/512170/512800/512200", "frequency": "monthly", "status": "adapter_not_connected", "version_rule": "proxy list + raw response SHA-256"},
 ]
 
 

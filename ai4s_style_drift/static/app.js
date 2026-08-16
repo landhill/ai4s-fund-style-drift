@@ -8,6 +8,27 @@ const $=id=>document.getElementById(id);
 function setText(id,value){$(id).textContent=value}
 function formatDelta(v){return `${v>=0?'+':''}${v.toFixed(3)}`}
 
+function renderDeepSeekConfig(config){
+  const status=config.status||((config.configured)?'configured':'disabled'),labels={connected:'连接成功',configured:'已配置',disabled:'未配置',error:'连接失败'};
+  setText('deepseek-config-status',labels[status]||status);$('deepseek-dot').className=status;
+  if(config.model)$('deepseek-model').value=config.model;if(config.base_url)$('deepseek-base-url').value=config.base_url;
+  const source=config.key_source==='session'?'当前会话内存':config.key_source==='environment'?'服务环境变量':'无';
+  setText('deepseek-config-detail',status==='error'?(config.reason||'连接失败，检查 Key 后重试'):`凭据来源：${source} · 报告结论保持 immutable`);
+}
+
+async function loadDeepSeekConfig(){
+  if(IS_STATIC_HOST){renderDeepSeekConfig({status:'disabled',configured:false,key_source:'none',model:'deepseek-chat',base_url:'https://api.deepseek.com'});setText('deepseek-config-detail','静态站点不接收 API Key，请使用本地研究台');return}
+  try{const res=await fetch('/api/deepseek/config',{cache:'no-store'});if(!res.ok)throw new Error(`HTTP ${res.status}`);renderDeepSeekConfig(await res.json())}
+  catch(err){renderDeepSeekConfig({status:'error',reason:err.message})}
+}
+
+async function saveDeepSeekConfig({clear=false}={}){
+  const button=$('deepseek-save');button.disabled=true;setText('deepseek-config-status',clear?'正在清除':'正在验证');$('deepseek-dot').className='testing';
+  try{const payload={model:$('deepseek-model').value,base_url:$('deepseek-base-url').value,clear_api_key:clear,test_connection:!clear};const key=$('deepseek-api-key').value.trim();if(key&&!clear)payload.api_key=key;const res=await fetch('/api/deepseek/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),cache:'no-store'});const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body.error||`HTTP ${res.status}`);$('deepseek-api-key').value='';renderDeepSeekConfig(body)}
+  catch(err){renderDeepSeekConfig({status:'error',reason:err.message})}
+  finally{button.disabled=false}
+}
+
 async function loadAnalysis(){
   document.body.classList.add('loading'); $('refresh').disabled=true;
   const fundId=$('fund-id').value.trim()||'159552';
@@ -38,7 +59,7 @@ function renderDiscovery(){
   $('direction-list').innerHTML=d.directions.map(x=>`<article class="direction-card ${x.feasibility}"><header><b>${x.id}</b><em>${x.feasibility==='ready'?'可直接运行':'部分数据受阻'}</em></header><h3>${x.title}</h3><p>${x.gap}</p><dl><div><dt>问题</dt><dd>${x.question}</dd></div><div><dt>预注册假设</dt><dd>${x.hypothesis}</dd></div><div><dt>证据</dt><dd>${x.literature_ids.join(' · ')}</dd></div><div><dt>数据 / 方法</dt><dd>${x.required_data.join('、')} / ${x.methods.join('、')}</dd></div></dl><button type="button" class="direction-confirm" data-direction="${x.id}">确认并开始研究</button></article>`).join('');
   $('literature-list').innerHTML=d.literature.map(x=>`<article class="literature-item"><header><b>${x.citation_id}</b><span>${x.authors} · ${x.year}</span></header><h3>${x.title}</h3><dl><div><dt>测度</dt><dd>${x.extracted.measure}</dd></div><div><dt>机制</dt><dd>${x.extracted.mechanism}</dd></div><div><dt>局限</dt><dd>${x.extracted.limitation}</dd></div></dl></article>`).join('');
   $('gap-list').innerHTML=d.directions.map(x=>`<div class="gap-item"><b>${x.id}</b><span>${x.gap}</span><em>${x.feasibility}</em></div>`).join('');$('hypothesis-list').innerHTML=d.directions.map(x=>`<li><b>${x.id}</b>：${x.hypothesis}<span class="hypothesis-state">待确认</span></li>`).join('');
-  renderKnowledgeGraph(d.knowledge_graph);renderHarness(d.harness);setText('kg-summary',`${d.knowledge_graph.nodes.length} 节点 · ${d.knowledge_graph.edges.length} 关系 · discovery`);setText('footer-run','文献分析完成 · 等待研究方向确认');
+  renderKnowledgeGraph(d.knowledge_graph);renderHarness(d.harness);renderResearchPerspectives([]);setText('kg-summary',`${d.knowledge_graph.nodes.length} 节点 · ${d.knowledge_graph.edges.length} 关系 · discovery`);setText('footer-run','文献分析完成 · 等待研究方向确认');
 }
 
 function applyStaticSelection(payload,methods,prompt){const r=payload.report,c=r.method_comparison;c.methods=c.methods.filter(m=>methods.includes(m.id));c.selected_ids=methods;const completed=c.methods.filter(m=>m.result.status==='completed'),signals=completed.map(m=>m.result.drift_detected),share=signals.length?signals.filter(Boolean).length/signals.length:0;c.review.completed=completed.length;c.review.not_testable=c.methods.length-completed.length;c.review.drift_vote_share=Number(share.toFixed(3));c.review.consensus=share>=.67?'drift':share<=.33?'no_drift':'mixed';const selected=new Set(methods),allMethods=new Set(METHOD_OPTIONS.map(m=>m.id));r.knowledge_graph.nodes=r.knowledge_graph.nodes.filter(n=>!allMethods.has(n.id)||selected.has(n.id));const ids=new Set(r.knowledge_graph.nodes.map(n=>n.id));r.knowledge_graph.edges=r.knowledge_graph.edges.filter(e=>ids.has(e.source)&&ids.has(e.target));r.harness.prompt=prompt;r.harness.stages[1].summary=`运行 ${c.methods.length} 种图谱方法与 ${r.experiments.length} 项实验`;r.harness.stages[1].evidence_ids=methods;r.harness.stages[2].summary=`方法共识 ${c.review.consensus}；不可检验 ${c.review.not_testable} 项；失败假设 ${r.failed_hypotheses.length} 项`}
@@ -64,12 +85,34 @@ function renderResearch(){
   $('citation-list').innerHTML=r.citation_audit.map(x=>`<div class="citation-row"><b>${x.citation_id.replace('CIT-','')}</b><span><code>${x.doi}</code><br>${x.verification_status}</span><em class="audit-state ${x.doi_format_valid&&x.metadata_complete?'ok':''}">${x.doi_format_valid&&x.metadata_complete?'格式通过':'待修复'}</em></div>`).join('');
   const version=r.version;$('version-info').innerHTML=`<div>code: ${version.code.environment_version}</div><div>data: ${version.data.dataset_version}</div><div>schema: ${version.data.schema_sha256}</div>${r.data_manifest.map(x=>`<div class="manifest-row"><b>${x.dataset_id}</b><span>${x.source}</span><em>${x.status}</em></div>`).join('')}`;
   const cost=r.reproduction_cost;$('cost-info').innerHTML=`<div>runtime: ${cost.runtime_seconds}s</div><div>LLM calls: ${cost.llm_calls}</div><div>network calls: ${cost.network_calls}</div><div>external API cost: ¥${cost.external_api_cost.toFixed(2)}</div><div>${cost.cost_note}</div>`;
+  renderDeepSeekReport(r.deepseek_report);
   setText('research-conclusion',r.conclusion.interpretation);$('limitation-list').innerHTML=r.limitations.map(x=>`<li>${x}</li>`).join('');
   renderKnowledgeGraph(r.knowledge_graph);
   renderHarness(r.harness);
   renderMethodComparison(r.method_comparison);
+  renderResearchPerspectives(r.experiments);
   renderDataAudit(r.data_audit||[]);
   setText('footer-run',`自主研究完成 · ${new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`);
+}
+
+function renderDeepSeekReport(report){
+  if(!report){setText('deepseek-status','未请求');setText('deepseek-meta','');setText('deepseek-report','确认研究方向后生成；未配置 API Key 时保留本地确定性报告。');return}
+  const labels={completed:'已生成',disabled:'未配置',error:'调用失败'};setText('deepseek-status',labels[report.status]||report.status);
+  const usage=report.usage||{};$('deepseek-meta').innerHTML=`<span>model <b>${report.model||'—'}</b></span><span>request <code>${(report.request_fingerprint||'').slice(0,12)||'—'}</code></span><span>tokens <b>${usage.total_tokens??'—'}</b></span><span>canonical <b>${report.canonical_report_immutable?'immutable':'—'}</b></span>`;
+  setText('deepseek-report',report.status==='completed'?report.content:(report.reason||'DeepSeek 报告不可用，已保留本地确定性报告。'));
+}
+
+function renderResearchPerspectives(experiments){
+  const byId=Object.fromEntries(experiments.map(item=>[item.id,item.result])),manager=byId.E4,narrative=byId.E5,industry=byId.E6;
+  const managerRows=[];
+  (manager?.events||[]).forEach(event=>managerRows.push(`<div class="evidence-event"><time>${event.date}</time><div><b>${event.manager} · 经理变更</b><span>事件窗暴露位移 L2 = ${event.exposure_shift_l2}</span></div><em>量化事件</em></div>`));
+  (narrative?.topic_profiles||[]).forEach(item=>managerRows.push(`<div class="evidence-event"><time>${item.published_date}</time><div><b>定期报告观点</b><span>${item.excerpt}</span><code>SHA ${item.document_sha256.slice(0,12)}</code></div><em>原文已核验</em></div>`));
+  $('manager-timeline').innerHTML=managerRows.join('')||'<p class="empty-evidence">当前研究方向未运行经理事件或观点实验。</p>';
+  setText('manager-evidence-status',narrative?`报告原文 ${narrative.extracted_report_count}/${narrative.report_metadata_count} · 外部宣讲 ${narrative.verified_external_communications}`:(manager?.status||'未运行'));
+  const anomalyRows=(industry?.anomaly_months||[]).map(item=>`<div class="evidence-event"><time>${item.date}</time><div><b>异常残差 ${item.residual}</b><span>样本外 |z| = ${Math.abs(item.z_score).toFixed(3)}</span></div><em>${item.z_score>0?'正异常':'负异常'}</em></div>`);
+  const shiftRows=(industry?.rolling_exposure_changes||[]).slice(0,3).map(item=>`<div class="evidence-event exposure-change"><time>暴露变化</time><div><b>${item.industry}</b><span>滚动系数首尾变化 ${item.change>=0?'+':''}${item.change}</span></div><em>行业代理</em></div>`);
+  $('industry-anomalies').innerHTML=[...anomalyRows,...shiftRows].join('')||'<p class="empty-evidence">当前研究方向未运行行业残差实验。</p>';
+  setText('industry-evidence-status',industry?.status==='completed'?`样本外 RMSE ${industry.metrics.rmse} · 异常占比 ${industry.anomaly_share}`:(industry?.status||'未运行'));
 }
 
 function renderDataAudit(rows){$('data-audit-list').innerHTML=rows.map(row=>`<div class="data-audit-row"><b>${row.id}</b><em class="data-kind ${row.kind}">${row.kind}</em><span>${row.source}<small>${row.instrument}</small></span><span>${row.start&&row.end?`${row.start} → ${row.end} · `:''}${row.observations} 条</span><code>${row.sha256?row.sha256.slice(0,12):'—'}</code></div>`).join('')}
@@ -168,6 +211,10 @@ function drawAll(){drawExposure();drawDistance()}
 $('mode-analysis').onclick=()=>switchMode('analysis');$('mode-research').onclick=()=>switchMode('research');
 $('fund-form').onsubmit=e=>{e.preventDefault();researchState=null;currentMode==='analysis'?loadAnalysis():loadResearch()};
 $('harness-form').onsubmit=e=>{e.preventDefault();researchState=null;loadResearch()};
+$('deepseek-config-form').onsubmit=e=>{e.preventDefault();saveDeepSeekConfig()};
+$('deepseek-clear').onclick=()=>saveDeepSeekConfig({clear:true});
+$('deepseek-key-toggle').onclick=()=>{const input=$('deepseek-api-key'),show=input.type==='password';input.type=show?'text':'password';setText('deepseek-key-toggle',show?'隐藏':'显示');$('deepseek-key-toggle').setAttribute('aria-label',show?'隐藏 API Key':'显示 API Key')};
 $('direction-list').onclick=e=>{const button=e.target.closest('.direction-confirm');if(button)executeDirection(button.dataset.direction)};
 $('refresh').onclick=()=>currentMode==='analysis'?loadAnalysis():loadResearch();window.addEventListener('resize',()=>requestAnimationFrame(drawAll));loadAnalysis();
 renderMethodOptions();
+loadDeepSeekConfig();

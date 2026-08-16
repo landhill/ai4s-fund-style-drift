@@ -29,7 +29,15 @@ def make_demo_data(seed: int = 7, fund_id: str = "DEMO-TECH") -> tuple[pd.DataFr
     fund = 0.002 + beta[:, 0] * fac[:, 0] + beta[:, 1] * fac[:, 1] + beta[:, 2] * fac[:, 2] + beta[:, 3] * fac[:, 3] + beta[:, 4] * fac[:, 4] + beta[:, 5] * tech + noise
     returns = pd.DataFrame({"fund": fund, "rf": 0.001, "market": fac[:, 0], "size_factor": fac[:, 1], "value_factor": fac[:, 2], "momentum_factor": fac[:, 3], "quality_factor": fac[:, 4], "tech_factor": tech}, index=dates)
     holdings = pd.DataFrame({"date": dates[::3], "large_cap": np.where(dates[::3] < "2024-01-31", 0.72, 0.38), "small_cap": np.where(dates[::3] < "2024-01-31", 0.12, 0.42), "growth": np.where(dates[::3] < "2024-01-31", 0.68, 0.35), "momentum": np.where(dates[::3] < "2024-01-31", 0.28, 0.70), "tech": np.where(dates[::3] < "2024-01-31", 0.62, 0.48)}).set_index("date")
-    mandate = {"fund_id": fund_id, "declared_style": "large-cap growth technology", "target": pd.Series([0.95, -0.15, -0.20, 0.30, 0.35, 0.75], index=["market", "size", "value", "momentum", "quality", "tech"]), "benchmark": "CSI300-like market factor", "evidence": "demo_contract: technology fund prospectus, section 3", "data_source": "synthetic", "factor_model": "synthetic known factors"}
+    industry_returns = pd.DataFrame({
+        "semiconductor": tech,
+        "new_energy": 0.6 * tech + rng.normal(0, 0.02, n),
+        "defense": fac[:, 3] + rng.normal(0, 0.018, n),
+        "healthcare": fac[:, 4] + rng.normal(0, 0.018, n),
+        "bank": fac[:, 2] + rng.normal(0, 0.018, n),
+        "real_estate": fac[:, 0] - fac[:, 2] + rng.normal(0, 0.018, n),
+    }, index=dates)
+    mandate = {"fund_id": fund_id, "declared_style": "large-cap growth technology", "target": pd.Series([0.95, -0.15, -0.20, 0.30, 0.35, 0.75], index=["market", "size", "value", "momentum", "quality", "tech"]), "benchmark": "CSI300-like market factor", "evidence": "demo_contract: technology fund prospectus, section 3", "data_source": "synthetic", "factor_model": "synthetic known factors", "manager_history": [], "periodic_reports": [], "manager_communications": [], "industry_returns": industry_returns}
     return returns, holdings, mandate
 
 

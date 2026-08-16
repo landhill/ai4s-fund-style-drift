@@ -3,4 +3,5 @@ numpy>=1.24
 langgraph>=0.2
 requests>=2.31
 lxml>=5.0
+pypdf>=6.0
 # Optional role-based LLM layer: autogen-agentchat>=0.4 or crewai>=0.80

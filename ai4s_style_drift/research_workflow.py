@@ -7,6 +7,7 @@ from .provenance import LITERATURE, PUBLIC_DATA_MANIFEST, citation_audit
 from .research import run_autonomous_research
 from .knowledge_graph import build_knowledge_graph
 from .harness import build_harness_state
+from .deepseek_harness import attach_deepseek_report
 
 
 RESEARCH_DIRECTIONS = [
@@ -36,15 +37,27 @@ RESEARCH_DIRECTIONS = [
     },
     {
         "id": "D3",
-        "title": "持仓、资金流与经理事件的机制归因",
-        "gap": "季度持仓无法还原完整交易路径，公开资金流口径不足以识别主动调仓机制。",
-        "question": "漂移能否由持仓变化、申赎流量或经理变更事件解释？",
-        "hypothesis": "控制市场暴露后，经理事件与异常资金流显著解释风格距离变化。",
+        "title": "基金经理变更与叙事漂移",
+        "gap": "经理换人、定期报告观点与外部宣讲尚未形成原文级、可复现的事件证据链。",
+        "question": "经理变更前后的量化暴露是否突变，经理报告观点是否与漂移方向一致？",
+        "hypothesis": "经理变更前后风格暴露 L2 位移至少为 0.5；叙事证据必须绑定原文 URL、日期与指纹。",
         "literature_ids": ["CIT-CHAN-CHEN-LAKONISHOK-2002"],
         "methods": ["HOLDINGS"],
-        "required_data": ["HOLDINGS", "FLOW", "MANAGER"],
+        "required_data": ["MANAGER", "REPORTS", "COMMUNICATIONS", "NAV"],
         "feasibility": "partially_blocked",
-        "novelty": "区分被动市场漂移与主动调仓机制，并明确不可检验部分。",
+        "novelty": "把经理事件时间、定量暴露和原文观点放进同一证据链，并明确不可检验部分。",
+    },
+    {
+        "id": "D4",
+        "title": "行业基准残差异常与暴露突变",
+        "gap": "行业拟合通常只报告样本内系数，缺少冻结模型样本外残差异常和滚动暴露突变审计。",
+        "question": "公开行业 ETF 基准能否解释基金表现，哪些月份出现异常残差或行业暴露突变？",
+        "hypothesis": "冻结行业模型在样本外至少出现一个绝对 z-score 不低于 2 的异常残差。",
+        "literature_ids": ["CIT-SHARPE-1992", "CIT-BROWN-GOETZMANN-1997"],
+        "methods": ["RBSA-12"],
+        "required_data": ["NAV", "INDUSTRY"],
+        "feasibility": "ready",
+        "novelty": "将样本外误差、异常月份和滚动行业暴露变化统一为可复核实验。",
     },
 ]
 
@@ -132,7 +145,8 @@ def execute_confirmed_research(fund_id: str, direction_id: str, prompt: str = ""
     focus = {
         "D1": {"gaps": {"G1"}, "hypotheses": {"H1", "H2"}, "experiments": {"E1", "E2"}},
         "D2": {"gaps": {"G2"}, "hypotheses": {"H3"}, "experiments": {"E3"}},
-        "D3": {"gaps": {"G3"}, "hypotheses": {"H4"}, "experiments": {"E4"}},
+        "D3": {"gaps": {"G3"}, "hypotheses": {"H4", "H5"}, "experiments": {"E4", "E5"}},
+        "D4": {"gaps": {"G4"}, "hypotheses": {"H6"}, "experiments": {"E6"}},
     }[direction_id]
     report["gaps"] = [item for item in report["gaps"] if item["id"] in focus["gaps"]]
     report["hypotheses"] = [item for item in report["hypotheses"] if item["id"] in focus["hypotheses"]]
@@ -155,6 +169,8 @@ def execute_confirmed_research(fund_id: str, direction_id: str, prompt: str = ""
         {"step": 5, "agent": "reporter", "action": "write_scientific_report", "status": "completed", "outputs": ["CONCLUSION"]},
     ]
     report["knowledge_graph"] = build_knowledge_graph(report, fund_id)
+    attach_deepseek_report(report, prompt)
+    report["execution_log"][-1]["outputs"].append(f"DEEPSEEK:{report['deepseek_report']['status']}")
     report["harness"] = build_harness_state(report, prompt)
     report["harness"]["confirmed_direction_id"] = direction_id
     result["phase"] = "completed"

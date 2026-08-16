@@ -94,6 +94,19 @@
         <div class="research-status"><strong id="hypothesis-count">—</strong><span>研究假设</span></div>
       </section>
       <section class="harness-console">
+        <section class="deepseek-config" aria-labelledby="deepseek-config-title">
+          <div class="deepseek-config-head">
+            <div><p>DEEPSEEK HARNESS</p><h2 id="deepseek-config-title">报告模型设置</h2></div>
+            <div class="deepseek-connection"><i id="deepseek-dot"></i><span id="deepseek-config-status">读取配置中</span></div>
+          </div>
+          <form id="deepseek-config-form" autocomplete="off">
+            <label class="deepseek-field deepseek-key-field"><span>API Key</span><div><input id="deepseek-api-key" type="password" autocomplete="new-password" placeholder="输入后仅保存在当前服务进程"><button id="deepseek-key-toggle" type="button" title="显示或隐藏 API Key" aria-label="显示 API Key">显示</button></div></label>
+            <label class="deepseek-field"><span>模型</span><select id="deepseek-model"><option value="deepseek-chat">deepseek-chat</option><option value="deepseek-reasoner">deepseek-reasoner</option></select></label>
+            <label class="deepseek-field"><span>API 地址</span><input id="deepseek-base-url" type="url" value="https://api.deepseek.com" readonly></label>
+            <div class="deepseek-config-actions"><button id="deepseek-clear" class="secondary" type="button">清除 Key</button><button id="deepseek-save" type="submit">保存并测试</button></div>
+          </form>
+          <div class="deepseek-security"><span>内存保存</span><span>不回显 Key</span><span>原始结论不可修改</span><strong id="deepseek-config-detail">未配置时自动使用本地确定性报告</strong></div>
+        </section>
         <div class="harness-dialog">
           <div class="section-heading"><div><p>HARNESS PROMPT</p><h2>研究任务对话框</h2></div><span id="harness-status">等待输入</span></div>
           <form id="harness-form">
@@ -116,6 +129,16 @@
         <div class="section-heading"><div><p>METHOD BENCHMARK</p><h2>知识图谱方法效果比较</h2></div><span id="method-consensus">等待运行</span></div>
         <div id="method-results" class="method-results"></div>
         <p id="method-warning" class="method-warning"></p>
+      </section>
+      <section class="perspective-section">
+        <div class="perspective-panel">
+          <div class="section-heading"><div><p>MANAGER EVIDENCE</p><h2>基金经理事件与观点时间线</h2></div><span id="manager-evidence-status">等待运行</span></div>
+          <div id="manager-timeline" class="evidence-timeline"></div>
+        </div>
+        <div class="perspective-panel">
+          <div class="section-heading"><div><p>INDUSTRY RESIDUALS</p><h2>行业拟合异常与暴露变化</h2></div><span id="industry-evidence-status">等待运行</span></div>
+          <div id="industry-anomalies" class="evidence-timeline"></div>
+        </div>
       </section>
       <section class="data-audit-section">
         <div class="section-heading"><div><p>REAL DATA AUDIT</p><h2>真实数据来源核验</h2></div><span>观测、派生、假设与缺失分开披露</span></div>
@@ -174,6 +197,11 @@
       <section class="version-section">
         <div><p>VERSION CHECK</p><h2>版本与数据清单</h2><div id="version-info" class="version-info"></div></div>
         <div><p>REPRODUCTION COST</p><h2>复现成本</h2><div id="cost-info" class="cost-info"></div></div>
+      </section>
+      <section class="deepseek-report-section">
+        <div class="section-heading"><div><p>DEEPSEEK REPORTER</p><h2>证据约束研究报告</h2></div><span id="deepseek-status">等待运行</span></div>
+        <div id="deepseek-meta" class="deepseek-meta"></div>
+        <pre id="deepseek-report" class="deepseek-report">确认研究方向后生成；未配置 API Key 时保留本地确定性报告。</pre>
       </section>
       <section class="conclusion-section">
         <div><p>SCIENTIFIC CONCLUSION</p><h2>结论与边界</h2><blockquote id="research-conclusion">—</blockquote></div>
